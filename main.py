@@ -10,11 +10,7 @@ broker="nas.local"
 port=1883
 spa_host = '192.168.50.201'
 
-
-async def connect_and_listen(spa_host):
-    """ Connect to the spa and try some commands. """
-    spa = balboa.BalboaSpaWifi(spa_host)
-    await spa.connect()
+async def read_spa(spa):
 
     await spa.send_config_req()
     await spa.listen_until_configured()
@@ -53,23 +49,19 @@ async def connect_and_listen(spa_host):
             temp = spa.curtemp
             pump = sum(spa.pump_status)
 
-            '''
+
             cur = time.localtime()
-            spa_time = time.localtime()
-            spa_time = list(spa_time)
-            spa_time[3] = spa.time_hour
-            spa_time[4] = spa.time_minute
-            spa_time = time.struct_time(tuple(spa_time)) 
+            cur_min = cur.tm_hour * 60 + cur.tm_min
 
-            diff = time.mktime(cur) - time.mktime(spa_time) / 60
-            print('time difference', diff)
-            if diff > 10:
-            '''
+            spa_min = spa.time_hour*60 + spa.time_minute
 
-            print("Trying to set time")
-            print("--------------------------")
-            await spa.set_time(time.localtime())
-            await spa.disconnect()
+            print('spa_min', spa_min , 'cur_min', cur_min)
+
+            if abs(spa_min  - cur_min) > 2:
+                print("Setting time")
+                print("--------------------------")
+                await spa.set_time(cur)
+
             break
     d = {}
     if temp is not None and temp != 0.0:
@@ -79,21 +71,35 @@ async def connect_and_listen(spa_host):
     if d:
         return d
 
-async def connect_and_listen_timeout(spa_host, timeout):
+
+
+async def connect_and_listen(spa_host, timeout):
+    """ Connect to the spa and try some commands. """
+    spa = balboa.BalboaSpaWifi(spa_host)
+    try:
+        await asyncio.wait_for(spa.connect(), timeout=timeout)
+    except asyncio.TimeoutError:
+        print("timeout connect")
+        return
     val = None
     try:
-        val = await asyncio.wait_for(connect_and_listen(spa_host), timeout=timeout)
+        val = await asyncio.wait_for(read_spa(spa), timeout=timeout)
     except asyncio.TimeoutError:
-        print("timeout")
+        print("timeout read")
+    try:
+        await asyncio.wait_for(spa.disconnect(), timeout=timeout)
+    except asyncio.TimeoutError:
+        print("timeout disconnect")
     return val
 
+
 if __name__ == "__main__":
-    client = paho.Client("balboa")
+    client = paho.Client()
     client.connect(broker)
     client.loop_start()
     while True:
         start = time.monotonic()
-        val = asyncio.run(connect_and_listen_timeout(spa_host, timeout=30))
+        val = asyncio.run(connect_and_listen(spa_host, timeout=30))
         print('status', val)
         if val is not None:
             ret= client.publish("balboa/status",json.dumps(val))
