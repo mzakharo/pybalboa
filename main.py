@@ -53,11 +53,14 @@ async def read_spa(spa):
             cur = time.localtime()
             cur_min = cur.tm_hour * 60 + cur.tm_min
 
+            #filter out midnight transition
+            exclude = [23*60+59, 0, 1]
+
             spa_min = spa.time_hour*60 + spa.time_minute
 
             print('spa_min', spa_min , 'cur_min', cur_min)
 
-            if abs(spa_min  - cur_min) > 2:
+            if cur_min not in exclude and abs(spa_min  - cur_min) > 2:
                 print("Setting time")
                 print("--------------------------")
                 await spa.set_time(cur)
