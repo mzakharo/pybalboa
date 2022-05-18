@@ -17,6 +17,7 @@ async def read_spa(spa):
 
     temp = None
     pump = None
+    heat = None
 
     for i in range(0, 4):
         print("Reading panel update")
@@ -49,6 +50,8 @@ async def read_spa(spa):
             temp = spa.curtemp
             pump = sum(spa.pump_status)
 
+            heat = spa.get_heatstate()
+
 
             cur = time.localtime()
             cur_min = cur.tm_hour * 60 + cur.tm_min
@@ -71,6 +74,8 @@ async def read_spa(spa):
         d['temp'] = temp
     if pump is not None:
         d['pmp'] =pump
+    if heat is not None:
+        d['heat'] = heat
     if d:
         return d
 
