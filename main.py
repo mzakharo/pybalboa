@@ -18,6 +18,8 @@ async def read_spa(spa):
     temp = None
     pump = None
     heat = None
+    light = None
+    soak = None
 
     for i in range(0, 4):
         print("Reading panel update")
@@ -25,7 +27,6 @@ async def read_spa(spa):
         if(msg is None or spa.find_balboa_mtype(msg) != balboa.BMTR_STATUS_UPDATE):
             msg = await spa.read_one_message()
         if(msg is not None and spa.find_balboa_mtype(msg) == balboa.BMTR_STATUS_UPDATE):
-            print("Got msg: {0}".format(msg.hex()))
             await spa.parse_status_update(msg)
             print("New data as of {0}".format(spa.lastupd))
             print("Current Temp: {0}".format(spa.curtemp))
@@ -35,11 +36,8 @@ async def read_spa(spa):
             print("Heat State: {0}".format(spa.get_heatstate(True)))
             print("Temp Range: {0}".format(spa.get_temprange(True)))
             print("Pump Status: {0}".format(str(spa.pump_status)))
-            print("Circulation Pump: {0}".format(spa.get_circ_pump(True)))
             print("Light Status: {0}".format(str(spa.light_status)))
-            print("Mister Status: {0}".format(spa.get_mister(True)))
-            print("Aux Status: {0}".format(str(spa.aux_status)))
-            print("Blower Status: {0}".format(spa.get_blower(True)))
+            print("Soak type: {0}".format(str(spa.get_soak_type())))
             print("Spa Time: {0:02d}:{1:02d} {2}".format(
                 spa.time_hour,
                 spa.time_minute,
@@ -51,7 +49,8 @@ async def read_spa(spa):
             pump = sum(spa.pump_status)
 
             heat = spa.get_heatstate()
-
+            light = sum(spa.light_status)
+            soak = spa.get_soak_type()
 
             cur = time.localtime()
             cur_min = cur.tm_hour * 60 + cur.tm_min
@@ -73,9 +72,15 @@ async def read_spa(spa):
     if temp is not None and temp != 0.0:
         d['temp'] = temp
     if pump is not None:
-        d['pmp'] =pump
+        d['pmp'] = pump
     if heat is not None:
         d['heat'] = heat
+    if light is not None:
+        d['light'] = light
+    if soak is not None:
+        d['soak'] = soak
+
+
     if d:
         return d
 

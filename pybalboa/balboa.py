@@ -158,6 +158,7 @@ class BalboaSpaWifi:
         self.mister_status = 0
         self.blower_status = 0
         self.aux_status = [0, 0]
+        self.soak_type = 0
         self.wifistate = 0
         self.lastupd = 0
         self.sleep_time = 60
@@ -768,6 +769,8 @@ class BalboaSpaWifi:
             else:
                 self.aux_status[i] = data[20] & 0x10
 
+        self.soak_type = data[27] & 0x3
+
         self.lastupd = time.time()
         # populate prior_status
         for i in range(0, 31):
@@ -1071,6 +1074,9 @@ class BalboaSpaWifi:
         if text:
             return text_switch[self.mister_status]
         return self.mister_status
+    
+    def get_soak_type(self):
+        return self.soak_type
 
     def have_circ_pump(self):
         """ Do we have a circ_pump? """
