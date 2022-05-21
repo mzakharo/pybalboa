@@ -48,9 +48,12 @@ async def read_spa(spa):
             temp = spa.curtemp
             pump = sum(spa.pump_status)
 
-            heat = spa.get_heatstate()
+            heat = int(spa.get_heatstate() == 1) #merge HEAT_WAITING and IDLE
             light = sum(spa.light_status)
             soak = spa.get_soak_type()
+            if soak == 2: #microsilk
+                pump += 3
+            soak = int(soak == 1) #filter out microsilk
 
             cur = time.localtime()
             cur_min = cur.tm_hour * 60 + cur.tm_min
