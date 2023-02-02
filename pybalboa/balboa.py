@@ -227,8 +227,11 @@ class BalboaSpaWifi:
 
     async def disconnect(self):
         """ Stop talking to the spa."""
+        if self.connected == False:
+            return
         self.log.info("Disconnect requested")
         self.connected = False
+
         if not self.writer._loop.is_closed():
             self.writer.close()
             await self.writer.wait_closed()

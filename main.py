@@ -43,14 +43,14 @@ def get_state(spa):
 async def change_light(spa, state):
     await spa.send_config_req()
     await spa.listen_until_configured()
-    #await spa.read_one_message()
     await spa.change_light(0, state)
     light = -1
     while True:
         msg = await spa.read_one_message()
         if(msg is not None and spa.find_balboa_mtype(msg) == balboa.BMTR_STATUS_UPDATE):
             await spa.parse_status_update(msg)
-            return get_state(spa) 
+            return get_state(spa)
+        await asyncio.sleep(0)
     
 async def set_temp(spa, temp):
     await spa.send_config_req()
@@ -60,20 +60,25 @@ async def set_temp(spa, temp):
         msg = await spa.read_one_message()
         if(msg is not None and spa.find_balboa_mtype(msg) == balboa.BMTR_STATUS_UPDATE):
             await spa.parse_status_update(msg)
-            return get_state(spa)  
+            return get_state(spa)
+        await asyncio.sleep(0)
     
 async def read_spa(spa):
-
     await spa.send_config_req()
     await spa.listen_until_configured()
-
-    temp = None
-    pump = None
-    heat = None
-    light = None
-    soak = None
-    set_temp = None
-
+        
+    # while True:
+        # print("Asking for setup parameters")
+        # await spa.send_panel_req(4, 0)
+        # msg = await spa.read_one_message()
+        # if(msg is not None and spa.find_balboa_mtype(msg) == balboa.BMTR_SETUP_PARAMS_RESP):
+            # spa.parse_setup_parameters(msg)
+            # print("Min Temps: {0}".format(spa.tmin))
+            # print("Max Temps: {0}".format(spa.tmax))
+            # print("Nr of pumps: {0}".format(spa.nr_of_pumps))
+            # break
+        # await asyncio.sleep(0)    
+            
     while True:
         msg = await spa.read_one_message()
         if(msg is not None and spa.find_balboa_mtype(msg) == balboa.BMTR_STATUS_UPDATE):
@@ -94,8 +99,6 @@ async def read_spa(spa):
                 spa.get_timescale(True)
             ))
             print("Filter Mode: {0}".format(spa.get_filtermode(True)))
-            
-
 
             cur = time.localtime()
             cur_min = cur.tm_hour * 60 + cur.tm_min
@@ -108,76 +111,48 @@ async def read_spa(spa):
                 print("--------------------------")
                 await spa.set_time(cur)                
             return get_state(spa)
-            break
-   
+        await asyncio.sleep(0)
 
-
-    if d:
-        return d
 
 
 async def connect_and_set_temp(spa_host, timeout, temp):
-    """ Connect to the spa and try some commands. """
     spa = balboa.BalboaSpaWifi(spa_host)
     try:
-        await asyncio.wait_for(spa.connect(), timeout=timeout)
+        success = await asyncio.wait_for(spa.connect(), timeout=timeout)
+        if success:
+            return await asyncio.wait_for(set_temp(spa, temp), timeout=timeout)
     except asyncio.TimeoutError:
-        print("timeout connect")
-        return
-    val = None
-    try:
-        val = await asyncio.wait_for(set_temp(spa, temp), timeout=timeout)
-    except asyncio.TimeoutError:
-        print("timeout read")
-    try:
-        await asyncio.wait_for(spa.disconnect(), timeout=timeout)
-    except asyncio.TimeoutError:
-        print("timeout disconnect")
-    return val
-    
+        print("timeout")
+    finally:
+        await asyncio.wait_for(spa.disconnect(), timeout=timeout)    
 
 async def connect_and_set_light(spa_host, timeout, state):
-    """ Connect to the spa and try some commands. """
     spa = balboa.BalboaSpaWifi(spa_host)
     try:
-        await asyncio.wait_for(spa.connect(), timeout=timeout)
+        success = await asyncio.wait_for(spa.connect(), timeout=timeout)
+        if success:
+            return await asyncio.wait_for(change_light(spa, state), timeout=timeout)
     except asyncio.TimeoutError:
-        print("timeout connect")
-        return
-    val = None
-    try:
-        val = await asyncio.wait_for(change_light(spa, state), timeout=timeout)
-    except asyncio.TimeoutError:
-        print("timeout read")
-    try:
+        print("timeout")
+    finally:
         await asyncio.wait_for(spa.disconnect(), timeout=timeout)
-    except asyncio.TimeoutError:
-        print("timeout disconnect")
-    return val
     
 
 async def connect_and_listen(spa_host, timeout):
-    """ Connect to the spa and try some commands. """
     spa = balboa.BalboaSpaWifi(spa_host)
     try:
-        await asyncio.wait_for(spa.connect(), timeout=timeout)
+        success = await asyncio.wait_for(spa.connect(), timeout=timeout)
+        if success:
+            return await asyncio.wait_for(read_spa(spa), timeout=timeout)
     except asyncio.TimeoutError:
-        print("timeout connect")
-        return
-    val = None
-    try:
-        val = await asyncio.wait_for(read_spa(spa), timeout=timeout)
-    except asyncio.TimeoutError:
-        print("timeout read")
-    try:
+        print("timeout")
+    finally:
         await asyncio.wait_for(spa.disconnect(), timeout=timeout)
-    except asyncio.TimeoutError:
-        print("timeout disconnect")
-    return val
+
     
     
 def on_connect( client, userdata, flags, rc):
-    print("Connected with result code "+str(rc))
+    print("MQTT connected with result code "+str(rc))
     client.subscribe("balboa/command/+")
     
 def on_message(client, userdata, msg):
@@ -194,6 +169,12 @@ def on_message(client, userdata, msg):
         elif cmd == 'temp':
             with lock:
                 val = asyncio.run(connect_and_set_temp(spa_host, timeout=5, temp=float(msg.payload)))
+            print(cmd , val)
+            if val is not None:
+                client.publish("balboa/status", json.dumps(val))
+        else:
+            with lock:
+                val = asyncio.run(connect_and_listen(spa_host, timeout=5))
             print(cmd , val)
             if val is not None:
                 client.publish("balboa/status", json.dumps(val))
