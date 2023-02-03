@@ -11,20 +11,33 @@ port=1883
 spa_host = '192.168.50.201'
 lock = Lock()
 
+pump_modes = ['off', 'low', 'high', 'microsilk']
 
 def get_state(spa): 
+    d = {'state' : 'heat' if spa.get_heatmode() == 0 else 'off'}
+
     temp = spa.curtemp
-    pump = sum(spa.pump_status)
     set_temp = spa.get_settemp()
+
+    pump = sum(spa.pump_status)
+    if pump <= 2:
+        d['pump_mode'] = pump_modes[pump]
 
     heat = int(spa.get_heatstate() == 1) #merge HEAT_WAITING and IDLE
     light = sum(spa.light_status)
     soak = spa.get_soak_type()
     if soak == 2: #microsilk
         pump += 3
+        d['pump_mode'] = 'microsilk'
     soak = int(soak == 1) #filter out microsilk
-    
-    d = {'state' : 'heat'}
+
+    action = 'idle'
+    if pump:
+        action = 'fan'
+    if heat:
+        action = 'heating'
+    d['action'] = action
+
     if set_temp is not None:
         d['set_temp'] = set_temp
     if temp is not None and temp != 0.0:
@@ -52,17 +65,37 @@ async def change_light(spa, state):
             return get_state(spa)
         await asyncio.sleep(0)
     
-async def set_temp(spa, temp):
+async def set_mode(spa, mode):
     await spa.send_config_req()
     await spa.listen_until_configured()
-    await spa.send_temp_change(temp)
+    await spa.change_heatmode(0 if mode == b'heat' else 1)
     while True:
         msg = await spa.read_one_message()
         if(msg is not None and spa.find_balboa_mtype(msg) == balboa.BMTR_STATUS_UPDATE):
             await spa.parse_status_update(msg)
             return get_state(spa)
         await asyncio.sleep(0)
-    
+
+async def set_pump(spa, mode):
+    await spa.send_config_req()
+    await spa.listen_until_configured()
+    while True:
+        await spa.send_panel_req(4, 0)
+        msg = await spa.read_one_message()
+        if(msg is not None and spa.find_balboa_mtype(msg) == balboa.BMTR_STATUS_UPDATE):
+            await spa.parse_status_update(msg)
+            break
+        await asyncio.sleep(0)
+
+    await spa.change_pump(0, pump_modes.index(str(mode)))
+    while True:
+        await spa.send_panel_req(4, 0)
+        msg = await spa.read_one_message()
+        if(msg is not None and spa.find_balboa_mtype(msg) == balboa.BMTR_STATUS_UPDATE):
+            await spa.parse_status_update(msg)
+            return get_state(spa)
+        await asyncio.sleep(0)
+
 async def read_spa(spa):
     await spa.send_config_req()
     await spa.listen_until_configured()
@@ -126,6 +159,31 @@ async def connect_and_set_temp(spa_host, timeout, temp):
     finally:
         await asyncio.wait_for(spa.disconnect(), timeout=timeout)    
 
+async def connect_and_set_mode(spa_host, timeout, mode):
+    spa = balboa.BalboaSpaWifi(spa_host)
+    try:
+        success = await asyncio.wait_for(spa.connect(), timeout=timeout)
+        if success:
+            return await asyncio.wait_for(set_mode(spa, mode), timeout=timeout)
+    except asyncio.TimeoutError:
+        print("timeout")
+    finally:
+        await asyncio.wait_for(spa.disconnect(), timeout=timeout)    
+
+
+async def connect_and_set_pump(spa_host, timeout, mode):
+    spa = balboa.BalboaSpaWifi(spa_host)
+    try:
+        success = await asyncio.wait_for(spa.connect(), timeout=timeout)
+        if success:
+            return await asyncio.wait_for(set_pump(spa, mode), timeout=timeout)
+    except asyncio.TimeoutError:
+        print("timeout")
+    finally:
+        await asyncio.wait_for(spa.disconnect(), timeout=timeout)    
+
+
+
 async def connect_and_set_light(spa_host, timeout, state):
     spa = balboa.BalboaSpaWifi(spa_host)
     try:
@@ -172,6 +230,19 @@ def on_message(client, userdata, msg):
             print(cmd , val)
             if val is not None:
                 client.publish("balboa/status", json.dumps(val))
+        elif cmd == 'mode':
+            with lock:
+                val = asyncio.run(connect_and_set_mode(spa_host, timeout=5, mode=msg.payload))
+            print(cmd , val)
+            if val is not None:
+                client.publish("balboa/status", json.dumps(val))
+        elif cmd == 'pump':
+            with lock:
+                #val = asyncio.run(connect_and_set_pump(spa_host, timeout=5, mode=msg.payload))
+                val = asyncio.run(connect_and_listen(spa_host, timeout=5))
+            print(cmd , val)
+            if val is not None:
+                client.publish("balboa/status", json.dumps(val))
         else:
             with lock:
                 val = asyncio.run(connect_and_listen(spa_host, timeout=5))
@@ -186,7 +257,7 @@ if __name__ == "__main__":
     client.on_connect = on_connect
     client.on_message = on_message
     client.loop_start()
-    #val = asyncio.run(connect_and_set_temp(spa_host, timeout=5, temp=40.0))
+    #val = asyncio.run(connect_and_set_pump(spa_host, timeout=5, mode='low'))
     #print('status', val)
     #sys.exit(1)
     while True:
