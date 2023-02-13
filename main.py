@@ -267,6 +267,8 @@ if __name__ == "__main__":
         print('status', val)
         if val is not None:
             ret= client.publish("balboa/status",json.dumps(val))
+            if 'temp' in val: 
+                client.publish("balboa/temp", str(val['temp']), retain=True)
         elapsed = time.monotonic() - start
         print('elapsed', elapsed)
         diff = 60  - elapsed
