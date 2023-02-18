@@ -91,7 +91,7 @@ async def change_soak(spa, state):
 async def set_mode(spa, state):
     await spa.send_config_req()
     await spa.listen_until_configured()
-    await spa.change_heatmode(0 if state == b'heat' else 1)
+    await spa.change_heatmode(state)
     while True:
         msg = await spa.read_one_message()
         if(msg is not None and spa.find_balboa_mtype(msg) == balboa.BMTR_STATUS_UPDATE):
@@ -202,7 +202,7 @@ def on_message(client, userdata, msg):
             state = float(msg.payload)
         elif cmd == 'mode':
             func = set_mode
-            state = msg.payload           
+            state = 0 if msg.payload == b'heat' else 1           
         else:
             func = read_spa
             state = None
