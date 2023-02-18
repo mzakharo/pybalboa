@@ -57,7 +57,19 @@ async def change_light(spa, state):
     await spa.send_config_req()
     await spa.listen_until_configured()
     await spa.change_light(0, state)
-    light = -1
+    while True:
+        msg = await spa.read_one_message()
+        if(msg is not None and spa.find_balboa_mtype(msg) == balboa.BMTR_STATUS_UPDATE):
+            await spa.parse_status_update(msg)
+            return get_state(spa)
+        await asyncio.sleep(0)
+
+
+#TODO: figure out how to control soak mode
+async def change_soak(spa, state):
+    await spa.send_config_req()
+    await spa.listen_until_configured()
+    await spa.change_soak(state)
     while True:
         msg = await spa.read_one_message()
         if(msg is not None and spa.find_balboa_mtype(msg) == balboa.BMTR_STATUS_UPDATE):
@@ -195,7 +207,18 @@ async def connect_and_set_light(spa_host, timeout, state):
     finally:
         await asyncio.wait_for(spa.disconnect(), timeout=timeout)
     
-
+async def connect_and_set_soak(spa_host, timeout, state):
+    spa = balboa.BalboaSpaWifi(spa_host)
+    try:
+        success = await asyncio.wait_for(spa.connect(), timeout=timeout)
+        if success:
+            return await asyncio.wait_for(change_soak(spa, state), timeout=timeout)
+    except asyncio.TimeoutError:
+        print("timeout")
+    finally:
+        await asyncio.wait_for(spa.disconnect(), timeout=timeout)
+        
+        
 async def connect_and_listen(spa_host, timeout):
     spa = balboa.BalboaSpaWifi(spa_host)
     try:
@@ -221,6 +244,12 @@ def on_message(client, userdata, msg):
         if cmd == 'light':
             with lock:
                 val = asyncio.run(connect_and_set_light(spa_host, timeout=5, state=int(msg.payload)))
+            print(cmd, val)
+            if val is not None:
+                client.publish("balboa/status", json.dumps(val))
+        elif cmd == 'soak':
+            with lock:
+                val = asyncio.run(connect_and_set_soak(spa_host, timeout=5, state=int(msg.payload)))
             print(cmd, val)
             if val is not None:
                 client.publish("balboa/status", json.dumps(val))

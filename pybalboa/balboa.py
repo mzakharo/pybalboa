@@ -23,6 +23,7 @@ C_AUX2 = 0x17
 C_BLOWER = 0x0C
 C_TEMPRANGE = 0x50
 C_HEATMODE = 0x51
+C_SOAK = 0x1d
 
 MAX_PUMPS = 6
 
@@ -296,6 +297,11 @@ class BalboaSpaWifi:
         await self.send_message(
             *mtypes[BMTS_CONTROL_REQ], C_LIGHT1 if light == 0 else C_LIGHT2, 0x00
         )
+     
+    async def control(self, addr):
+        await self.send_message(
+            *mtypes[BMTS_CONTROL_REQ], addr, 0x00
+        )
 
     async def change_pump(self, pump, newstate):
         """ Change pump #pump to newstate. """
@@ -354,6 +360,15 @@ class BalboaSpaWifi:
             return
 
         await self.send_message(*mtypes[BMTS_CONTROL_REQ], C_TEMPRANGE, 0x00)
+        
+        
+    async def change_soak(self, newmode):
+        """ Change the spa's temprange to newmode. """
+        # sanity check
+        if newmode > 1 or self.soak_type == newmode:
+            return
+
+        await self.send_message(*mtypes[BMTS_CONTROL_REQ], C_SOAK, 0x00)
 
     async def change_aux(self, aux, newstate):
         """ Change aux #aux to newstate. """
