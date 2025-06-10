@@ -6,7 +6,7 @@ import json
 import paho.mqtt.client as paho
 from threading import Lock
 
-broker="nas.home.arpa"
+broker="localhost"
 port=1883
 #spa_host = '192.168.1.176'
 spa_host = '192.168.50.201'
